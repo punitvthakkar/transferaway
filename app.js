@@ -1,13 +1,24 @@
 let peer;
 let conn;
 const chunkSize = 16 * 1024; // 16KB chunks
+let myShortCode;
+let myPeerId;
+
+function generateShortCode() {
+    return Math.random().toString(36).substring(2, 8).toUpperCase();
+}
 
 function initPeer() {
     peer = new Peer();
     
     peer.on('open', (id) => {
-        document.getElementById('peerId').textContent = `Your Peer ID: ${id}`;
+        myPeerId = id;
+        myShortCode = generateShortCode();
+        document.getElementById('peerId').textContent = `Your Peer ID: ${myPeerId}`;
+        document.getElementById('shortCode').textContent = `Your Short Code: ${myShortCode}`;
+        generateQRCode(myPeerId);
         document.getElementById('connectionStatus').textContent = 'Waiting for connection...';
+        broadcastShortCode();
     });
 
     peer.on('connection', (connection) => {
@@ -19,10 +30,77 @@ function initPeer() {
         console.error('Peer error:', err);
         document.getElementById('connectionStatus').textContent = 'Error: ' + err.message;
     });
+
+    // Check if there's a peer ID in the URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const peerIdFromUrl = urlParams.get('peer');
+    if (peerIdFromUrl) {
+        connectToPeer(peerIdFromUrl);
+    }
 }
 
-function connectToPeer() {
-    const peerId = document.getElementById('peerIdInput').value;
+function broadcastShortCode() {
+    peer.on('connection', (conn) => {
+        conn.on('data', (data) => {
+            if (data.type === 'shortCodeRequest') {
+                conn.send({ type: 'shortCodeResponse', shortCode: myShortCode, peerId: myPeerId });
+            }
+        });
+    });
+}
+
+function generateQRCode(peerId) {
+    const qrContainer = document.getElementById('qrcode');
+    qrContainer.innerHTML = ''; // Clear previous QR code
+    const currentUrl = new URL(window.location.href);
+    currentUrl.searchParams.set('peer', peerId);
+    new QRCode(qrContainer, {
+        text: currentUrl.toString(),
+        width: 128,
+        height: 128
+    });
+}
+
+function connectToPeer(code) {
+    if (code.length === 6) {
+        requestPeerIdFromShortCode(code);
+    } else {
+        establishConnection(code);
+    }
+}
+
+function requestPeerIdFromShortCode(shortCode) {
+    document.getElementById('connectionStatus').textContent = 'Searching for peer...';
+    let foundPeer = false;
+
+    // Connect to all available peers and ask for their short code
+    peer.listAllPeers((peerIds) => {
+        peerIds.forEach((peerId) => {
+            if (peerId !== myPeerId) {
+                let tempConn = peer.connect(peerId);
+                tempConn.on('open', () => {
+                    tempConn.send({ type: 'shortCodeRequest' });
+                });
+                tempConn.on('data', (data) => {
+                    if (data.type === 'shortCodeResponse' && data.shortCode === shortCode) {
+                        foundPeer = true;
+                        tempConn.close();
+                        establishConnection(data.peerId);
+                    }
+                });
+            }
+        });
+
+        // If no peer is found after checking all peers, show an error
+        setTimeout(() => {
+            if (!foundPeer) {
+                document.getElementById('connectionStatus').textContent = 'Peer not found. Please try again.';
+            }
+        }, 5000); // Wait for 5 seconds before showing the error
+    });
+}
+
+function establishConnection(peerId) {
     conn = peer.connect(peerId);
     setupConnection();
 }
@@ -137,7 +215,10 @@ function addFileToList(file, type = 'upload') {
 document.addEventListener('DOMContentLoaded', () => {
     initPeer();
 
-    document.getElementById('connectButton').addEventListener('click', connectToPeer);
+    document.getElementById('connectButton').addEventListener('click', () => {
+        const peerIdInput = document.getElementById('peerIdInput').value;
+        connectToPeer(peerIdInput);
+    });
 
     document.getElementById('sendButton').addEventListener('click', () => {
         const files = document.getElementById('fileInput').files;
