@@ -3,6 +3,8 @@ let conn;
 const chunkSize = 16 * 1024; // 16KB chunks
 let myShortCode;
 let myPeerId;
+let fileQueue = [];
+let isTransferring = false;
 
 function generateShortCode() {
     return Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -18,7 +20,6 @@ function initPeer() {
         document.getElementById('shortCode').textContent = `Your Short Code: ${myShortCode}`;
         generateQRCode(myPeerId);
         document.getElementById('connectionStatus').textContent = 'Waiting for connection...';
-        broadcastShortCode();
     });
 
     peer.on('connection', (connection) => {
@@ -39,16 +40,6 @@ function initPeer() {
     }
 }
 
-function broadcastShortCode() {
-    peer.on('connection', (conn) => {
-        conn.on('data', (data) => {
-            if (data.type === 'shortCodeRequest') {
-                conn.send({ type: 'shortCodeResponse', shortCode: myShortCode, peerId: myPeerId });
-            }
-        });
-    });
-}
-
 function generateQRCode(peerId) {
     const qrContainer = document.getElementById('qrcode');
     qrContainer.innerHTML = ''; // Clear previous QR code
@@ -63,41 +54,10 @@ function generateQRCode(peerId) {
 
 function connectToPeer(code) {
     if (code.length === 6) {
-        requestPeerIdFromShortCode(code);
+        alert("Short codes can only be used by the receiver. Please use the full Peer ID to connect.");
     } else {
         establishConnection(code);
     }
-}
-
-function requestPeerIdFromShortCode(shortCode) {
-    document.getElementById('connectionStatus').textContent = 'Searching for peer...';
-    let foundPeer = false;
-
-    // Connect to all available peers and ask for their short code
-    peer.listAllPeers((peerIds) => {
-        peerIds.forEach((peerId) => {
-            if (peerId !== myPeerId) {
-                let tempConn = peer.connect(peerId);
-                tempConn.on('open', () => {
-                    tempConn.send({ type: 'shortCodeRequest' });
-                });
-                tempConn.on('data', (data) => {
-                    if (data.type === 'shortCodeResponse' && data.shortCode === shortCode) {
-                        foundPeer = true;
-                        tempConn.close();
-                        establishConnection(data.peerId);
-                    }
-                });
-            }
-        });
-
-        // If no peer is found after checking all peers, show an error
-        setTimeout(() => {
-            if (!foundPeer) {
-                document.getElementById('connectionStatus').textContent = 'Peer not found. Please try again.';
-            }
-        }, 5000); // Wait for 5 seconds before showing the error
-    });
 }
 
 function establishConnection(peerId) {
@@ -109,10 +69,13 @@ function setupConnection() {
     conn.on('open', () => {
         document.getElementById('connectionStatus').textContent = 'Connected to peer';
         document.getElementById('sendButton').disabled = false;
+        conn.send({ type: 'shortCodeInfo', shortCode: myShortCode });
     });
 
     conn.on('data', (data) => {
-        if (data.type === 'file-start') {
+        if (data.type === 'shortCodeInfo') {
+            document.getElementById('connectionStatus').textContent = `Connected to peer with short code: ${data.shortCode}`;
+        } else if (data.type === 'file-start') {
             receiveFile(data);
         } else if (data.type === 'file-chunk') {
             receiveChunk(data);
@@ -121,6 +84,20 @@ function setupConnection() {
 }
 
 function sendFile(file) {
+    fileQueue.push(file);
+    if (!isTransferring) {
+        sendNextFile();
+    }
+}
+
+function sendNextFile() {
+    if (fileQueue.length === 0) {
+        isTransferring = false;
+        return;
+    }
+
+    isTransferring = true;
+    const file = fileQueue.shift();
     const fileReader = new FileReader();
     let offset = 0;
 
@@ -139,6 +116,8 @@ function sendFile(file) {
 
         if (offset < file.size) {
             readNextChunk();
+        } else {
+            sendNextFile();
         }
     };
 
@@ -156,36 +135,37 @@ function sendFile(file) {
     readNextChunk();
 }
 
-let receivingFile = null;
+let receivingFiles = {};
 
 function receiveFile(data) {
-    receivingFile = {
+    receivingFiles[data.name] = {
         name: data.name,
         size: data.size,
         data: new Uint8Array(data.size),
         receivedSize: 0
     };
-    addFileToList(receivingFile, 'download');
+    addFileToList(receivingFiles[data.name], 'download');
 }
 
 function receiveChunk(data) {
-    if (!receivingFile) return;
+    let file = receivingFiles[data.name];
+    if (!file) return;
 
     const chunk = new Uint8Array(data.data);
-    receivingFile.data.set(chunk, data.offset);
-    receivingFile.receivedSize += chunk.length;
+    file.data.set(chunk, data.offset);
+    file.receivedSize += chunk.length;
 
-    updateProgress(receivingFile.name, receivingFile.receivedSize / receivingFile.size * 100);
+    updateProgress(file.name, file.receivedSize / file.size * 100);
 
-    if (receivingFile.receivedSize === receivingFile.size) {
-        const blob = new Blob([receivingFile.data], { type: 'application/octet-stream' });
+    if (file.receivedSize === file.size) {
+        const blob = new Blob([file.data], { type: 'application/octet-stream' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = receivingFile.name;
+        a.download = file.name;
         a.click();
         URL.revokeObjectURL(url);
-        receivingFile = null;
+        delete receivingFiles[data.name];
     }
 }
 
