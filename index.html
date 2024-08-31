@@ -6,16 +6,19 @@
     <title>P2P File Sharing</title>
     <link rel="stylesheet" href="styles.css">
     <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 </head>
 <body>
     <div id="app">
         <h1>P2P File Sharing</h1>
         <div id="peerId"></div>
+        <div id="shortCode"></div>
+        <div id="qrcode"></div>
         <div id="connectionStatus"></div>
-        <input type="text" id="peerIdInput" placeholder="Enter Peer ID">
+        <input type="text" id="peerIdInput" placeholder="Enter Peer ID or Short Code">
         <button id="connectButton">Connect</button>
         <input type="file" id="fileInput" multiple>
-        <button id="sendButton">Send Files</button>
+        <button id="sendButton" disabled>Send Files</button>
         <div id="peerList"></div>
         <div id="fileList"></div>
     </div>
