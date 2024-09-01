@@ -30,7 +30,7 @@ h1 {
     gap: 20px;
 }
 
-#peerId, #uniqueId {
+#peerId {
     background-color: #e9ecef;
     padding: 10px;
     border-radius: 5px;
