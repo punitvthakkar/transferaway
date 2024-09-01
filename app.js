@@ -1,13 +1,15 @@
 let peer;
 let conn;
-const chunkSize = 16 * 1024; // 16KB chunks
-let myShortCode;
+const chunkSize = 64 * 1024; // 64KB chunks
+let myUniqueId;
 let myPeerId;
 let fileQueue = [];
 let isTransferring = false;
 
-function generateShortCode() {
-    return Math.random().toString(36).substring(2, 8).toUpperCase();
+function generateUniqueId() {
+    const timestamp = Date.now().toString(36);
+    const randomChars = Math.random().toString(36).substring(2, 5);
+    return (timestamp + randomChars).toUpperCase();
 }
 
 function initPeer() {
@@ -15,9 +17,9 @@ function initPeer() {
     
     peer.on('open', (id) => {
         myPeerId = id;
-        myShortCode = generateShortCode();
+        myUniqueId = generateUniqueId();
         document.getElementById('peerId').textContent = `Your Peer ID: ${myPeerId}`;
-        document.getElementById('shortCode').textContent = `Your Short Code: ${myShortCode}`;
+        document.getElementById('uniqueId').textContent = `Your Unique ID: ${myUniqueId}`;
         generateQRCode(myPeerId);
         document.getElementById('connectionStatus').textContent = 'Waiting for connection...';
     });
@@ -32,7 +34,6 @@ function initPeer() {
         document.getElementById('connectionStatus').textContent = 'Error: ' + err.message;
     });
 
-    // Check if there's a peer ID in the URL
     const urlParams = new URLSearchParams(window.location.search);
     const peerIdFromUrl = urlParams.get('peer');
     if (peerIdFromUrl) {
@@ -42,7 +43,7 @@ function initPeer() {
 
 function generateQRCode(peerId) {
     const qrContainer = document.getElementById('qrcode');
-    qrContainer.innerHTML = ''; // Clear previous QR code
+    qrContainer.innerHTML = '';
     const currentUrl = new URL(window.location.href);
     currentUrl.searchParams.set('peer', peerId);
     new QRCode(qrContainer, {
@@ -53,11 +54,7 @@ function generateQRCode(peerId) {
 }
 
 function connectToPeer(code) {
-    if (code.length === 6) {
-        alert("Short codes can only be used by the receiver. Please use the full Peer ID to connect.");
-    } else {
-        establishConnection(code);
-    }
+    establishConnection(code);
 }
 
 function establishConnection(peerId) {
@@ -69,12 +66,12 @@ function setupConnection() {
     conn.on('open', () => {
         document.getElementById('connectionStatus').textContent = 'Connected to peer';
         document.getElementById('sendButton').disabled = false;
-        conn.send({ type: 'shortCodeInfo', shortCode: myShortCode });
+        conn.send({ type: 'uniqueIdInfo', uniqueId: myUniqueId });
     });
 
     conn.on('data', (data) => {
-        if (data.type === 'shortCodeInfo') {
-            document.getElementById('connectionStatus').textContent = `Connected to peer with short code: ${data.shortCode}`;
+        if (data.type === 'uniqueIdInfo') {
+            document.getElementById('connectionStatus').textContent = `Connected to peer with Unique ID: ${data.uniqueId}`;
         } else if (data.type === 'file-start') {
             receiveFile(data);
         } else if (data.type === 'file-chunk') {
@@ -141,7 +138,7 @@ function receiveFile(data) {
     receivingFiles[data.name] = {
         name: data.name,
         size: data.size,
-        data: new Uint8Array(data.size),
+        data: [],
         receivedSize: 0
     };
     addFileToList(receivingFiles[data.name], 'download');
@@ -151,14 +148,13 @@ function receiveChunk(data) {
     let file = receivingFiles[data.name];
     if (!file) return;
 
-    const chunk = new Uint8Array(data.data);
-    file.data.set(chunk, data.offset);
-    file.receivedSize += chunk.length;
+    file.data.push(new Uint8Array(data.data));
+    file.receivedSize += data.data.byteLength;
 
     updateProgress(file.name, file.receivedSize / file.size * 100);
 
     if (file.receivedSize === file.size) {
-        const blob = new Blob([file.data], { type: 'application/octet-stream' });
+        const blob = new Blob(file.data, { type: 'application/octet-stream' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
