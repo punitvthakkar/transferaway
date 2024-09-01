@@ -11,14 +11,20 @@
 <body>
     <div id="app">
         <h1>P2P File Sharing</h1>
-        <div id="peerId"></div>
-        <div id="shortCode"></div>
-        <div id="qrcode"></div>
+        <div id="connection-info">
+            <div id="peerId"></div>
+            <div id="uniqueId"></div>
+            <div id="qrcode"></div>
+        </div>
         <div id="connectionStatus"></div>
-        <input type="text" id="peerIdInput" placeholder="Enter Peer ID or Short Code">
-        <button id="connectButton">Connect</button>
-        <input type="file" id="fileInput" multiple>
-        <button id="sendButton" disabled>Send Files</button>
+        <div class="input-group">
+            <input type="text" id="peerIdInput" placeholder="Enter Peer ID or Unique ID">
+            <button id="connectButton">Connect</button>
+        </div>
+        <div class="input-group">
+            <input type="file" id="fileInput" multiple>
+            <button id="sendButton" disabled>Send Files</button>
+        </div>
         <div id="peerList"></div>
         <div id="fileList"></div>
     </div>
