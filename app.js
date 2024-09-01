@@ -1,6 +1,6 @@
 let peer;
 let conn;
-const chunkSize = 64 * 1024; // 64KB chunks
+const chunkSize = 16 * 1024; // Reverting to 16KB chunks
 let myPeerId;
 let fileQueue = [];
 let isTransferring = false;
@@ -25,7 +25,6 @@ function initPeer() {
         document.getElementById('connectionStatus').textContent = 'Error: ' + err.message;
     });
 
-    // Check if there's a peer ID in the URL
     const urlParams = new URLSearchParams(window.location.search);
     const peerIdFromUrl = urlParams.get('peer');
     if (peerIdFromUrl) {
@@ -36,7 +35,7 @@ function initPeer() {
 
 function generateQRCode(peerId) {
     const qrContainer = document.getElementById('qrcode');
-    qrContainer.innerHTML = ''; // Clear previous QR code
+    qrContainer.innerHTML = '';
     const currentUrl = new URL(window.location.href);
     currentUrl.searchParams.set('peer', peerId);
     new QRCode(qrContainer, {
@@ -47,7 +46,7 @@ function generateQRCode(peerId) {
 }
 
 function connectToPeer(peerId) {
-    conn = peer.connect(peerId);
+    conn = peer.connect(peerId, { reliable: true });
     setupConnection();
 }
 
@@ -124,7 +123,7 @@ function receiveFile(data) {
     receivingFiles[data.name] = {
         name: data.name,
         size: data.size,
-        data: [],
+        data: new Uint8Array(data.size),
         receivedSize: 0
     };
     addFileToList(receivingFiles[data.name], 'download');
@@ -134,13 +133,14 @@ function receiveChunk(data) {
     let file = receivingFiles[data.name];
     if (!file) return;
 
-    file.data.push(new Uint8Array(data.data));
-    file.receivedSize += data.data.byteLength;
+    const chunk = new Uint8Array(data.data);
+    file.data.set(chunk, data.offset);
+    file.receivedSize += chunk.length;
 
     updateProgress(file.name, file.receivedSize / file.size * 100);
 
     if (file.receivedSize === file.size) {
-        const blob = new Blob(file.data, { type: 'application/octet-stream' });
+        const blob = new Blob([file.data], { type: 'application/octet-stream' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
