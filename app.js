@@ -1,25 +1,16 @@
 let peer;
 let conn;
 const chunkSize = 64 * 1024; // 64KB chunks
-let myUniqueId;
 let myPeerId;
 let fileQueue = [];
 let isTransferring = false;
-
-function generateUniqueId() {
-    const timestamp = Date.now().toString(36);
-    const randomChars = Math.random().toString(36).substring(2, 5);
-    return (timestamp + randomChars).toUpperCase();
-}
 
 function initPeer() {
     peer = new Peer();
     
     peer.on('open', (id) => {
         myPeerId = id;
-        myUniqueId = generateUniqueId();
         document.getElementById('peerId').textContent = `Your Peer ID: ${myPeerId}`;
-        document.getElementById('uniqueId').textContent = `Your Unique ID: ${myUniqueId}`;
         generateQRCode(myPeerId);
         document.getElementById('connectionStatus').textContent = 'Waiting for connection...';
     });
@@ -34,16 +25,18 @@ function initPeer() {
         document.getElementById('connectionStatus').textContent = 'Error: ' + err.message;
     });
 
+    // Check if there's a peer ID in the URL
     const urlParams = new URLSearchParams(window.location.search);
     const peerIdFromUrl = urlParams.get('peer');
     if (peerIdFromUrl) {
+        document.getElementById('peerIdInput').value = peerIdFromUrl;
         connectToPeer(peerIdFromUrl);
     }
 }
 
 function generateQRCode(peerId) {
     const qrContainer = document.getElementById('qrcode');
-    qrContainer.innerHTML = '';
+    qrContainer.innerHTML = ''; // Clear previous QR code
     const currentUrl = new URL(window.location.href);
     currentUrl.searchParams.set('peer', peerId);
     new QRCode(qrContainer, {
@@ -53,11 +46,7 @@ function generateQRCode(peerId) {
     });
 }
 
-function connectToPeer(code) {
-    establishConnection(code);
-}
-
-function establishConnection(peerId) {
+function connectToPeer(peerId) {
     conn = peer.connect(peerId);
     setupConnection();
 }
@@ -66,13 +55,10 @@ function setupConnection() {
     conn.on('open', () => {
         document.getElementById('connectionStatus').textContent = 'Connected to peer';
         document.getElementById('sendButton').disabled = false;
-        conn.send({ type: 'uniqueIdInfo', uniqueId: myUniqueId });
     });
 
     conn.on('data', (data) => {
-        if (data.type === 'uniqueIdInfo') {
-            document.getElementById('connectionStatus').textContent = `Connected to peer with Unique ID: ${data.uniqueId}`;
-        } else if (data.type === 'file-start') {
+        if (data.type === 'file-start') {
             receiveFile(data);
         } else if (data.type === 'file-chunk') {
             receiveChunk(data);
